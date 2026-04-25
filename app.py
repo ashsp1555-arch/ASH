@@ -1,4 +1,213 @@
-pip install streamlit
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from sklearn.ensemble import RandomForestClassifier
+
+# ─────────────────────────────────────────────
+# Page Configuration
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="Customer Churn Predictor",
+    page_icon="✈️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ─────────────────────────────────────────────
+# Custom CSS
+# ─────────────────────────────────────────────
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .main-header h1 { margin: 0; font-size: 2.2rem; }
+    .main-header p  { margin: 0.5rem 0 0; font-size: 1rem; opacity: 0.85; }
+
+    .metric-box {
+        background: white;
+        border-radius: 10px;
+        padding: 1.2rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-left: 4px solid #2a5298;
+    }
+    .metric-box .label { font-size: 0.85rem; color: #666; font-weight: 500; }
+    .metric-box .value { font-size: 1.8rem; font-weight: 700; color: #1e3c72; }
+
+    .result-churn {
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        text-align: center;
+        font-size: 1.4rem;
+        font-weight: bold;
+        margin: 1rem 0;
+    }
+    .result-no-churn {
+        background: linear-gradient(135deg, #00c851, #007e33);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        text-align: center;
+        font-size: 1.4rem;
+        font-weight: bold;
+        margin: 1rem 0;
+    }
+    .info-card {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem 1.5rem;
+        border-left: 4px solid #2a5298;
+        margin: 0.5rem 0;
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 2rem;
+        font-size: 1rem;
+        font-weight: 600;
+        width: 100%;
+        cursor: pointer;
+    }
+    .stButton > button:hover { opacity: 0.9; }
+</style>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# Load or Train Model
+# ─────────────────────────────────────────────
+@st.cache_resource
+def load_model():
+    """Load model.pkl if available, otherwise train a demo model."""
+    try:
+        model = joblib.load("model.pkl")
+        return model, "Loaded from model.pkl"
+    except FileNotFoundError:
+        # Train a lightweight demo model on synthetic data
+        np.random.seed(42)
+        X_demo = np.random.rand(100, 6)
+        y_demo = np.random.randint(0, 2, 100)
+
+        demo_model = RandomForestClassifier(n_estimators=10, random_state=42)
+        demo_model.fit(X_demo, y_demo)
+
+        return demo_model, "Demo model (model.pkl not found)"
+
+# Load feature names
+@st.cache_resource
+def load_feature_names():
+    """Load feature names from feature_names.pkl if available."""
+    try:
+        return joblib.load("feature_names.pkl")
+    except FileNotFoundError:
+        return ['Age', 'ServicesOpted', 'AccountSyncedToSocialMedia',
+                'FrequentFlyer', 'AnnualIncomeClass', 'BookedHotelOrNot']
+
+# ─────────────────────────────────────────────
+# Main Application
+# ─────────────────────────────────────────────
+def main():
+    model, model_status = load_model()
+    feature_names = load_feature_names()
+
+    # Header
+    st.markdown('<div class="main-header"><h1>✈️ Customer Churn Predictor</h1><p>Predict customer churn using Random Forest Machine Learning</p></div>', unsafe_allow_html=True)
+
+    # Model Status
+    if "Demo" in model_status:
+        st.warning("⚠️ Using demo model. Upload model.pkl for production use.")
+    else:
+        st.success(f"✅ {model_status}")
+
+    # Sidebar for inputs
+    st.sidebar.header("📊 Customer Information")
+
+    # Input fields
+    age = st.sidebar.slider("Age", 18, 80, 30)
+    services_opted = st.sidebar.slider("Services Opted", 1, 5, 2)
+    account_synced = st.sidebar.selectbox("Account Synced to Social Media", ["Yes", "No"])
+    frequent_flyer = st.sidebar.selectbox("Frequent Flyer", ["Yes", "No"])
+    income_class = st.sidebar.selectbox("Annual Income Class", ["Low Income", "Middle Income", "High Income"])
+    hotel_booked = st.sidebar.selectbox("Booked Hotel or Not", ["Yes", "No"])
+
+    # Encode categorical variables
+    account_synced_encoded = 1 if account_synced == "Yes" else 0
+    frequent_flyer_encoded = 1 if frequent_flyer == "Yes" else 0
+    income_mapping = {"Low Income": 0, "Middle Income": 1, "High Income": 2}
+    income_encoded = income_mapping[income_class]
+    hotel_booked_encoded = 1 if hotel_booked == "Yes" else 0
+
+    # Create input array
+    input_data = np.array([[age, services_opted, account_synced_encoded,
+                           frequent_flyer_encoded, income_encoded, hotel_booked_encoded]])
+
+    # Prediction
+    if st.sidebar.button("🔍 Predict Churn Risk"):
+        prediction = model.predict(input_data)[0]
+        probability = model.predict_proba(input_data)[0][1]
+
+        st.header("🎯 Prediction Results")
+
+        # Result display
+        if prediction == 1:
+            st.markdown('<div class="result-churn">⚠️ HIGH CHURN RISK</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="result-no-churn">✅ LOW CHURN RISK</div>', unsafe_allow_html=True)
+
+        # Probability
+        st.subheader("Churn Probability")
+        st.progress(probability)
+        st.write(f"**{probability:.1%}** chance of churn")
+
+        # Feature importance visualization
+        if hasattr(model, 'feature_importances_'):
+            st.subheader("📈 Key Factors Influencing Prediction")
+
+            # Get feature importances
+            importances = model.feature_importances_
+            indices = np.argsort(importances)[::-1]
+
+            # Create horizontal bar chart
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.barh(range(len(indices)), importances[indices], color='#2a5298', alpha=0.7)
+            ax.set_yticks(range(len(indices)))
+            ax.set_yticklabels([feature_names[i] for i in indices])
+            ax.set_xlabel('Importance')
+            ax.set_title('Feature Importance')
+            plt.tight_layout()
+
+            st.pyplot(fig)
+
+    # Information section
+    st.header("ℹ️ About This Model")
+    st.markdown("""
+    <div class="info-card">
+    <strong>Algorithm:</strong> Random Forest Classifier<br>
+    <strong>Features:</strong> Age, Services Opted, Social Media Sync, Frequent Flyer Status, Income Class, Hotel Booking<br>
+    <strong>Performance:</strong> ~67% accuracy on test data<br>
+    <strong>Use Case:</strong> Travel industry customer retention
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Footer
+    st.markdown("---")
+    st.markdown("*Built with Streamlit & scikit-learn*")
+
+if __name__ == "__main__":
+    main()
 import streamlit as st
 import pandas as pd
 import numpy as np
